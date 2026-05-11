@@ -20,6 +20,28 @@ Run tests automatically on Git push:
 
 The GitHub Actions workflow runs on every push and pull request. It installs Node dependencies, installs Playwright browsers, runs `npm test`, and uploads the Playwright report plus test results as workflow artifacts.
 
+CI flow:
+
+```text
+Developer pushes code
+      ↓
+GitHub Actions triggers automatically
+      ↓
+Playwright tests hit https://frontend-hrqz.onrender.com
+      ↓
+Pass → merge allowed
+Fail → developer gets notified in GitHub
+```
+
+To block failed pull requests from merging, enable branch protection in GitHub:
+
+```text
+Repository → Settings → Branches → Add branch protection rule
+Branch name pattern: main
+Enable: Require status checks to pass before merging
+Select: Run Playwright tests
+```
+
 Run headed:
 
 ```powershell
