@@ -302,13 +302,21 @@ test.describe('Security Patrol Tracker - Admin Panel', () => {
   });
 
   test('TC-016: User Management displays current users', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /User Management/i })).toBeVisible();
-    await expect(page.getByText(/All Users/i)).toBeVisible();
-    await expect(page.getByText(/Mike Wilson/i)).toBeVisible();
-    await expect(page.getByText(/Sarah Johnson/i)).toBeVisible();
-    await expect(page.getByText(/John Smith/i)).toBeVisible();
-    await expect(page.getByText('SUPERVISOR', { exact: true })).toBeVisible();
-    await expect(page.getByText('GUARD', { exact: true }).first()).toBeVisible();
+    // Wait for User Management button with longer timeout to ensure page is loaded
+    await expect(page.getByRole('button', { name: /User Management/i })).toBeVisible({ timeout: 10_000 });
+    
+    // Wait for the All Users section to load before checking for specific users
+    await expect(page.getByText(/All Users/i)).toBeVisible({ timeout: 15_000 });
+    
+    // Add a small delay to ensure all user data is rendered (especially on webkit)
+    await page.waitForTimeout(500);
+    
+    // Now check for specific users
+    await expect(page.getByText(/Mike Wilson/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Sarah Johnson/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/John Smith/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('SUPERVISOR', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('GUARD', { exact: true }).first()).toBeVisible({ timeout: 5_000 });
   });
 
   test('TC-017: Create New User form is present', async ({ page }) => {
