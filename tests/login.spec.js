@@ -37,19 +37,60 @@ function logoutButton(page) {
   return page.getByRole('button', { name: /logout/i });
 }
 
-async function gotoLogin(page) {
-  await page.goto('/login');
-  await expect(emailField(page)).toBeVisible({ timeout: 60_000 });
-  await expect(passwordField(page)).toBeVisible();
-  await expect(signInButton(page)).toBeVisible();
-  await expect(page).toHaveTitle(/Security Patrol Tracker/i);
+async function gotoLogin(page, maxRetries = 3) {
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await page.goto('/login', { waitUntil: 'networkidle' });
+      
+      // Check for 503 or other server errors
+      if (response && !response.ok()) {
+        throw new Error(`HTTP ${response.status()} - Server may be unavailable`);
+      }
+      
+      await expect(emailField(page)).toBeVisible({ timeout: 60_000 });
+      await expect(passwordField(page)).toBeVisible();
+      await expect(signInButton(page)).toBeVisible();
+      await expect(page).toHaveTitle(/Security Patrol Tracker/i);
+      return; // Success
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        console.log(`Login page load failed (attempt ${attempt}/${maxRetries}). Retrying in 2s...`);
+        await page.waitForTimeout(2000);
+      }
+    }
+  }
+  
+  throw new Error(
+    `Failed to load login page after ${maxRetries} attempts. Last error: ${lastError?.message}`
+  );
 }
 
 async function submitLogin(page, { email, password }) {
   await gotoLogin(page);
   await emailField(page).fill(email);
   await passwordField(page).fill(password);
-  await signInButton(page).click();
+  
+  // Monitor for login errors or network issues
+  const loginPromise = signInButton(page).click();
+  
+  // Listen for failed responses during login
+  let loginError = null;
+  const responseHandler = (response) => {
+    if (response.url().includes('/api/') && !response.ok()) {
+      loginError = `API error: ${response.status()} ${response.statusText()}`;
+    }
+  };
+  
+  page.on('response', responseHandler);
+  await loginPromise;
+  page.removeListener('response', responseHandler);
+  
+  if (loginError) {
+    throw new Error(`Login API failed: ${loginError}`);
+  }
 }
 
 async function loginAsGuard(page) {
@@ -76,6 +117,14 @@ async function collectConsoleMessages(page) {
       text: error.message,
     });
   });
+  page.on('response', (response) => {
+    if (!response.ok() && (response.status() >= 400)) {
+      messages.push({
+        type: 'response-error',
+        text: `${response.status()} ${response.statusText()} - ${response.url()}`,
+      });
+    }
+  });
   return messages;
 }
 
@@ -98,7 +147,18 @@ test.describe('Security Patrol Tracker - Login page structure', () => {
     await gotoLogin(page);
 
     await expect(page).toHaveURL(routes.login);
-    expect(messages.filter((message) => message.type === 'error')).toEqual([]);
+    
+    const errors = messages.filter((message) => 
+      message.type === 'error' || 
+      message.type === 'pageerror' ||
+      (message.type === 'response-error' && !message.text.includes('favicon'))
+    );
+    
+    if (errors.length > 0) {
+      console.error('Network/console errors detected:', errors);
+    }
+    
+    expect(errors).toEqual([]);
   });
 
   test('TC-002: required login page elements are present', async ({ page }) => {
